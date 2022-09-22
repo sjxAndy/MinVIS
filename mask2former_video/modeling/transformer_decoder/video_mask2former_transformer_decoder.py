@@ -248,6 +248,11 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
         pre_norm: bool,
         mask_dim: int,
         enforce_input_project: bool,
+        share_bf: int,
+        bf: int,
+        insert_idx: list,
+        bt_num_layers: int,
+        eval_bf: bool,
         # video related
         num_frames,
     ):
@@ -314,6 +319,25 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
                 )
             )
 
+        # BatchFormer
+        self.bf = None
+        self.insert_idx = insert_idx
+        self.eval_bf = eval_bf
+        insert_idx = []
+        if bf:
+            def generate_bf(num):
+                if num == 1:
+                    decoder = torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5)
+                elif num >= 2:
+                    decoder = torch.nn.TransformerDecoder(torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5), num)
+                else:
+                    decoder = torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5)
+                return decoder
+            self.bf = generate_bf(bt_num_layers)
+            insert_idx = self.insert_idx
+            if not share_bf:
+                self.bf = torch.nn.ModuleList([generate_bf(bt_num_layers) if i in insert_idx else torch.nn.Identity() for i in range(0, self.num_layers)])
+
         self.decoder_norm = nn.LayerNorm(hidden_dim)
 
         self.num_queries = num_queries
@@ -362,6 +386,13 @@ class VideoMultiScaleMaskedTransformerDecoder(nn.Module):
         ret["enforce_input_project"] = cfg.MODEL.MASK_FORMER.ENFORCE_INPUT_PROJ
 
         ret["mask_dim"] = cfg.MODEL.SEM_SEG_HEAD.MASK_DIM
+
+        # BatchFormer
+        ret["share_bf"] = cfg.MODEL.MASK_FORMER.SHARE_BF
+        ret["bf"] = cfg.MODEL.MASK_FORMER.BF
+        ret["insert_idx"] = cfg.MODEL.MASK_FORMER.INSERT_IDX
+        ret["bt_num_layers"] = cfg.MODEL.MASK_FORMER.BT_NUM_LAYERS
+        ret["eval_bf"] = cfg.MODEL.MASK_FORMER.EVAL_BF
 
         ret["num_frames"] = cfg.INPUT.SAMPLING_FRAME_NUM
 

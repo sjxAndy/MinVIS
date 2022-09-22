@@ -206,6 +206,10 @@ class VideoMaskFormer_frame(nn.Module):
             # mask classification target
             targets = self.prepare_targets(batched_inputs, images)
 
+            # BatchFormer
+            if len(outputs['pred_logits']) > len(targets):
+                targets = targets + targets
+
             outputs, targets = self.frame_decoder_loss_reshape(outputs, targets)
 
             # bipartite matching-based loss

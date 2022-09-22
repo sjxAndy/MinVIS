@@ -37,6 +37,11 @@ class VideoMultiScaleMaskedTransformerDecoder_frame(VideoMultiScaleMaskedTransfo
         pre_norm: bool,
         mask_dim: int,
         enforce_input_project: bool,
+        share_bf: int,
+        bf: int,
+        insert_idx: list,
+        bt_num_layers: int,
+        eval_bf: bool,
         # video related
         num_frames,
     ):
@@ -52,6 +57,11 @@ class VideoMultiScaleMaskedTransformerDecoder_frame(VideoMultiScaleMaskedTransfo
             pre_norm=pre_norm,
             mask_dim=mask_dim,
             enforce_input_project=enforce_input_project,
+            share_bf=share_bf,
+            bf=bf,
+            insert_idx=insert_idx,
+            bt_num_layers=bt_num_layers,
+            eval_bf=eval_bf,
             num_frames=num_frames,
         )
 
@@ -113,6 +123,17 @@ class VideoMultiScaleMaskedTransformerDecoder_frame(VideoMultiScaleMaskedTransfo
             output = self.transformer_ffn_layers[i](
                 output
             )
+
+            if i in self.insert_idx and self.bf is not None and (self.training or self.eval_bf):
+                old_output = output
+                if i != self.insert_idx[0]:
+                    old_output = output[ :len(output)//2, :, :]
+                    output = output[len(output)//2:, :, :]
+                output = self.bf[i](output, src[level_index])
+                if self.training:
+                    output = torch.cat([old_output, output], dim=0)
+                if i == self.insert_idx[0] and self.training:
+                    query_embed = torch.cat([query_embed, query_embed], dim=0)
 
             outputs_class, outputs_mask, attn_mask = self.forward_prediction_heads(output, mask_features, attn_mask_target_size=size_list[(i + 1) % self.num_feature_levels])
             predictions_class.append(outputs_class)
